@@ -18,25 +18,11 @@ const Home = () => {
       setPosts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching posts:', error);
-      // Fallback with sample data for development
-      setPosts([
-        {
-          id: 1,
-          author: 'John Doe',
-          content: 'Welcome to AuraChat! This is a sample post.',
-          created_at: new Date().toISOString(),
-          likes: 5,
-          comments: 2
-        },
-        {
-          id: 2,
-          author: 'Jane Smith',
-          content: 'Great to be part of this community! 🎉',
-          created_at: new Date(Date.now() - 86400000).toISOString(),
-          likes: 3,
-          comments: 1
-        }
-      ]);
+      // Don't set fallback data in production - let user know there's an issue
+      if (error.message === 'Network Error') {
+        alert('Cannot connect to server. Please check if the backend is running.');
+      }
+      setPosts([]);
     } finally {
       setLoading(false);
     }
@@ -49,17 +35,13 @@ const Home = () => {
       setPosts([newPost, ...(Array.isArray(posts) ? posts : [])]);
     } catch (error) {
       console.error('Error creating post:', error);
-      // Fallback for development
-      const newPost = {
-        id: Date.now(),
-        author: 'Current User',
-        content: postData.content,
-        image: postData.image,
-        created_at: new Date().toISOString(),
-        likes: 0,
-        comments: 0
-      };
-      setPosts([newPost, ...(Array.isArray(posts) ? posts : [])]);
+      if (error.response?.data?.error) {
+        alert(`Error: ${error.response.data.error}`);
+      } else if (error.message === 'Network Error') {
+        alert('Cannot connect to server. Please check if the backend is running.');
+      } else {
+        alert('Failed to create post. Please try again.');
+      }
     }
   };
 

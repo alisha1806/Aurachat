@@ -1,6 +1,7 @@
 from app import db
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import event
 
 # Association table for followers
 followers = db.Table('followers',
@@ -58,15 +59,29 @@ class User(db.Model):
     def get_post_count(self):
         return self.posts.count()
     
+    def update_last_seen(self):
+        """Update user's last seen timestamp"""
+        self.last_seen = datetime.utcnow()
+        db.session.commit()
+    
+    def validate_username(self, username):
+        """Validate username format"""
+        import re
+        if not re.match(r'^[a-zA-Z0-9_]+$', username):
+            raise ValueError('Username can only contain letters, numbers, and underscores')
+        if len(username) < 3 or len(username) > 20:
+            raise ValueError('Username must be between 3 and 20 characters')
+    
     def to_dict(self):
         return {
             'id': self.id,
             'username': self.username,
             'email': self.email,
             'full_name': self.full_name,
-            'bio': self.bio,
+            'bio': self.bio or '',
             'profile_picture': self.profile_picture,
             'created_at': self.created_at.isoformat(),
+            'last_seen': self.last_seen.isoformat() if self.last_seen else None,
             'followers': self.get_follower_count(),
             'following': self.get_following_count(),
             'posts': self.get_post_count()

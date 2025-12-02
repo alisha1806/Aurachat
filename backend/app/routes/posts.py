@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 from app import db
 from app.models import Post, User, Like, Comment
 
@@ -9,20 +9,21 @@ posts_bp = Blueprint('posts', __name__)
 def get_posts():
     try:
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
+        per_page = min(request.args.get('per_page', 10, type=int), 50)  # Limit max per_page
         
         posts = Post.query.order_by(Post.created_at.desc()).paginate(
             page=page, per_page=per_page, error_out=False
         )
         
         current_user = None
-        if request.headers.get('Authorization'):
-            try:
-                from flask_jwt_extended import decode_token
-                # This is simplified - you'd want proper token validation
-                pass
-            except:
-                pass
+        # Try to get current user if token is provided (optional)
+        try:
+            verify_jwt_in_request(optional=True)
+            user_id = get_jwt_identity()
+            if user_id:
+                current_user = User.query.get(user_id)
+        except:
+            pass
         
         return jsonify({
             'posts': [post.to_dict(current_user) for post in posts.items],

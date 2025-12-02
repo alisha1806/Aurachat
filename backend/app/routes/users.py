@@ -10,11 +10,22 @@ users_bp = Blueprint('users', __name__)
 def get_current_user_profile():
     try:
         user_id = get_jwt_identity()
-        user = User.query.get_or_404(user_id)
+        print(f"[DEBUG] Profile request for user_id: {user_id}")  # Debug log
         
+        if not user_id:
+            print("[DEBUG] No user_id found in JWT token")
+            return jsonify({'error': 'Invalid token - no user ID'}), 401
+        
+        user = User.query.get(user_id)
+        if not user:
+            print(f"[DEBUG] User {user_id} not found in database")
+            return jsonify({'error': 'User not found'}), 404
+        
+        print(f"[DEBUG] Successfully found user: {user.username}")
         return jsonify({'user': user.to_dict()}), 200
         
     except Exception as e:
+        print(f"[DEBUG] Profile endpoint error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 

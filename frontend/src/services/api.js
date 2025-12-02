@@ -24,85 +24,84 @@ api.interceptors.request.use(
   }
 );
 
-// Auth API calls
-export const loginUser = async (credentials) => {
-  try {
-    const response = await api.post('/auth/login', credentials);
-    if (response.data.token) {
-      localStorage.setItem('authToken', response.data.token);
+// Add response interceptor for handling common errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 || error.response?.status === 422) {
+      // Token expired, invalid, or missing
+      console.log('Authentication error - clearing tokens');
+      localStorage.removeItem('authToken');
+      // Don't automatically redirect here - let components handle it
     }
-    return response.data;
-  } catch (error) {
-    console.error('Login API Error:', error);
-    throw error;
+    return Promise.reject(error);
   }
-};
+);
 
-export const registerUser = async (userData) => {
-  try {
+export const apiService = {
+  // Authentication endpoints
+  async login(credentials) {
+    const response = await api.post('/auth/login', credentials);
+    return response.data;
+  },
+
+  async register(userData) {
     const response = await api.post('/auth/register', userData);
     return response.data;
-  } catch (error) {
-    console.error('Register API Error:', error);
-    throw error;
+  },
+
+  async logout() {
+    const response = await api.post('/auth/logout');
+    return response.data;
+  },
+
+  async getCurrentUser() {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  async changePassword(passwordData) {
+    const response = await api.post('/auth/change-password', passwordData);
+    return response.data;
+  },
+
+  // Profile endpoints
+  async getProfile() {
+    const response = await api.get('/profile');
+    return response.data;
+  },
+
+  async updateProfile(profileData) {
+    const response = await api.put('/profile', profileData);
+    return response.data;
+  },
+
+  async updateTheme(theme) {
+    const response = await api.put('/profile/theme', { theme });
+    return response.data;
+  },
+
+  async uploadAvatar(avatarFile) {
+    const formData = new FormData();
+    formData.append('avatar', avatarFile);
+    
+    const response = await api.post('/profile/avatar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  async getSettings() {
+    const response = await api.get('/profile/settings');
+    return response.data;
+  },
+
+  async updateSettings(settings) {
+    const response = await api.put('/profile/settings', settings);
+    return response.data;
   }
-};
-
-export const logoutUser = () => {
-  localStorage.removeItem('authToken');
-};
-
-// Posts API calls
-export const getPosts = async () => {
-  try {
-    const response = await api.get('/posts');
-    return response.data.posts || response.data || [];
-  } catch (error) {
-    console.error('API Error:', error);
-    throw error;
-  }
-};
-
-export const createPost = async (postData) => {
-  try {
-    const response = await api.post('/posts', postData);
-    return response.data.post || response.data;
-  } catch (error) {
-    console.error('API Error:', error);
-    throw error;
-  }
-};
-
-export const likePost = async (postId) => {
-  const response = await api.post(`/posts/${postId}/like`);
-  return response.data;
-};
-
-export const commentOnPost = async (postId, comment) => {
-  const response = await api.post(`/posts/${postId}/comments`, { content: comment });
-  return response.data;
-};
-
-// User API calls
-export const getUserProfile = async (userId) => {
-  const endpoint = userId ? `/users/${userId}` : '/users/profile';
-  const response = await api.get(endpoint);
-  return response.data;
-};
-
-export const updateUserProfile = async (profileData) => {
-  const response = await api.put('/users/profile', profileData);
-  return response.data;
-};
-
-export const followUser = async (userId) => {
-  const response = await api.post(`/users/${userId}/follow`);
-  return response.data;
-};
-
-export const unfollowUser = async (userId) => {
-  const response = await api.delete(`/users/${userId}/follow`);
-  return response.data;
 };
 
 export default api;

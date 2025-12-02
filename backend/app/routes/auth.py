@@ -1,40 +1,65 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from app import db
-from app.models import User
+from app.models import User, UserProfile
+import re
 
 auth_bp = Blueprint('auth', __name__)
 
-@auth_bp.route('/register', methods=['POST'])
+@auth_bp.route('/auth/register', methods=['POST'])
 def register():
+    """User registration endpoint"""
     try:
         data = request.get_json()
-        print(f"Registration data received: {data}")  # Debug log
         
         # Validate required fields
-        required_fields = ['username', 'email', 'password', 'full_name']
+        required_fields = ['username', 'email', 'password']
         for field in required_fields:
             if not data or not data.get(field):
-                print(f"Missing field: {field}")  # Debug log
-                return jsonify({'error': f'{field} is required'}), 400
+                return jsonify({'message': f'{field} is required'}), 400
+        
+        # Validate username format
+        if not re.match(r'^[a-zA-Z0-9_]+$', data['username']):
+            return jsonify({'message': 'Username can only contain letters, numbers, and underscores'}), 400
+        
+        if len(data['username']) < 3 or len(data['username']) > 20:
+            return jsonify({'message': 'Username must be between 3 and 20 characters'}), 400
+        
+        # Validate email format
+        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', data['email']):
+            return jsonify({'message': 'Invalid email format'}), 400
+        
+        # Validate password strength
+        if len(data['password']) < 6:
+            return jsonify({'message': 'Password must be at least 6 characters long'}), 400
         
         # Check if user already exists
-        if User.query.filter_by(username=data['username']).first():
-            return jsonify({'error': 'Username already exists'}), 400
+        existing_user = User.query.filter_by(username=data['username']).first()
+        if existing_user:
+            return jsonify({'message': 'Username already taken. Please choose a different username or login if this is your account.'}), 409
         
-        if User.query.filter_by(email=data['email']).first():
-            return jsonify({'error': 'Email already exists'}), 400
+        existing_email = User.query.filter_by(email=data['email']).first()
+        if existing_email:
+            return jsonify({'message': 'Email already registered. Please use a different email or login if this is your account.'}), 409
         
         # Create new user
         user = User(
             username=data['username'],
-            email=data['email'],
-            full_name=data['full_name'],
-            bio=data.get('bio', '')
+            email=data['email']
         )
         user.set_password(data['password'])
         
         db.session.add(user)
+        db.session.flush()  # Get user ID
+        
+        # Create default profile
+        profile = UserProfile(
+            user_id=user.id,
+            full_name=data.get('full_name', ''),
+            theme_preference='light'  # Default theme
+        )
+        
+        db.session.add(profile)
         db.session.commit()
         
         # Create access token
@@ -46,38 +71,51 @@ def register():
             'user': user.to_dict()
         }), 201
         
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'message': f'Registration failed: {str(e)}'}), 500
 
 
-@auth_bp.route('/login', methods=['POST'])
+@auth_bp.route('/auth/login', methods=['POST'])
 def login():
+    """User login endpoint"""
     try:
         data = request.get_json()
         
-        if not data.get('email') or not data.get('password'):
-            return jsonify({'error': 'Email and password are required'}), 400
+        if not data.get('username') or not data.get('password'):
+            return jsonify({'message': 'Username and password are required'}), 400
         
-        user = User.query.filter_by(email=data['email']).first()
+        # Find user by username
+        user = User.query.filter_by(username=data['username']).first()
         
         if user and user.check_password(data['password']):
+            if not user.is_active:
+                return jsonify({'message': 'Account is deactivated'}), 403
+                
+            # Update last seen
+            user.update_last_seen()
+            
+            # Create access token
             access_token = create_access_token(identity=user.id)
+            
             return jsonify({
                 'message': 'Login successful',
                 'token': access_token,
                 'user': user.to_dict()
             }), 200
         else:
-            return jsonify({'error': 'Invalid email or password'}), 401
+            return jsonify({'message': 'Invalid username or password'}), 401
             
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'message': f'Login failed: {str(e)}'}), 500
 
 
-@auth_bp.route('/profile', methods=['GET'])
+@auth_bp.route('/auth/me', methods=['GET'])
 @jwt_required()
-def get_profile():
+def get_current_user():
+    """Get current user information"""
     try:
         user_id = get_jwt_identity()
         user = User.query.get(user_id)
@@ -85,14 +123,58 @@ def get_profile():
         if not user:
             return jsonify({'error': 'User not found'}), 404
         
+        if not user.is_active:
+            return jsonify({'error': 'Account is deactivated'}), 403
+        
         return jsonify({'user': user.to_dict()}), 200
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
-@auth_bp.route('/logout', methods=['POST'])
+@auth_bp.route('/auth/logout', methods=['POST'])
 @jwt_required()
 def logout():
-    # In a real application, you might want to blacklist the token
-    return jsonify({'message': 'Logout successful'}), 200
+    """User logout endpoint"""
+    try:
+        # In a real application, you might want to blacklist the token
+        # For now, we'll just return a success message
+        return jsonify({'message': 'Logout successful'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@auth_bp.route('/auth/change-password', methods=['POST'])
+@jwt_required()
+def change_password():
+    """Change user password"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        if not data.get('current_password') or not data.get('new_password'):
+            return jsonify({'error': 'Current password and new password are required'}), 400
+        
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Verify current password
+        if not user.check_password(data['current_password']):
+            return jsonify({'error': 'Current password is incorrect'}), 401
+        
+        # Validate new password
+        if len(data['new_password']) < 6:
+            return jsonify({'error': 'New password must be at least 6 characters long'}), 400
+        
+        # Update password
+        user.set_password(data['new_password'])
+        db.session.commit()
+        
+        return jsonify({'message': 'Password changed successfully'}), 200
+        
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Password change failed: {str(e)}'}), 500
