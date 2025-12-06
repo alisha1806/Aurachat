@@ -169,15 +169,36 @@ def update_comprehensive_profile():
         if not data:
             return jsonify({'error': 'No data provided'}), 400
         
-        # Update user table fields
+        # Update user table fields (only update known columns)
+        if 'email' in data:
+            # basic email validation
+            import re
+            if not re.match(r'^[^@]+@[^@]+\.[^@]+$', data['email']):
+                return jsonify({'error': 'Invalid email format'}), 400
+            user.email = data['email']
+
         if 'bio' in data:
             user.bio = data['bio']
         if 'profile_pic' in data:
             user.profile_pic = data['profile_pic']
+
+        # Accept both explicit boolean and privacy_settings map from frontend
         if 'is_private' in data:
             user.is_private = data['is_private']
-        if 'theme' in data:
-            user.theme = data['theme']
+        elif 'privacy_settings' in data and isinstance(data['privacy_settings'], dict):
+            # map profile_visibility -> is_private
+            profile_vis = data['privacy_settings'].get('profile_visibility')
+            if profile_vis == 'private':
+                user.is_private = True
+            elif profile_vis == 'public':
+                user.is_private = False
+
+        # Theme can be provided as 'theme' or 'theme_preference'
+        theme_val = data.get('theme') or data.get('theme_preference')
+        if theme_val:
+            if theme_val not in ['light', 'dark']:
+                return jsonify({'error': 'Invalid theme value'}), 400
+            user.theme = theme_val
         
         db.session.commit()
         

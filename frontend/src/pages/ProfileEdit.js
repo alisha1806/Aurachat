@@ -272,20 +272,40 @@ const ProfileEdit = () => {
         submitData.profile_pic = avatarPreview;
       }
 
-      // Send to backend
-      const response = await api.put('/profile/comprehensive', submitData);
-      
-      // Update local user context with new data
-      updateUser({
-        ...user,
-        email: profile.email,
-        bio: profile.bio,
-        profile_pic: avatarPreview || 'default.jpg',
-        theme: profile.theme_preference
-      });
+      // Handle demo users differently (no backend call)
+      if (user.isDemo) {
+        // Update local context only for demo users
+        updateUser({
+          ...user,
+          email: profile.email,
+          bio: profile.bio,
+          profile_pic: avatarPreview || 'default.jpg',
+          theme: profile.theme_preference,
+          location: profile.location,
+          website: profile.website,
+          phone: profile.phone,
+          occupation: profile.occupation,
+          interests: profile.interests
+        });
+        
+        showMessage('Profile updated successfully! (Demo mode - no backend)', 'success');
+        setAvatarFile(null);
+      } else {
+        // Send to backend for real users
+        const response = await api.put('/profile/comprehensive', submitData);
+        
+        // Update local user context with new data
+        updateUser({
+          ...user,
+          email: profile.email,
+          bio: profile.bio,
+          profile_pic: avatarPreview || 'default.jpg',
+          theme: profile.theme_preference
+        });
 
-      showMessage('Profile updated successfully!', 'success');
-      setAvatarFile(null);
+        showMessage('Profile updated successfully!', 'success');
+        setAvatarFile(null);
+      }
       
     } catch (err) {
       console.error('Profile update error:', err);

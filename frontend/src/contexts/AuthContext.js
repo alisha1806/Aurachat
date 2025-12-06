@@ -98,7 +98,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateUser = (updatedUserData) => {
-    setUser(prevUser => ({ ...prevUser, ...updatedUserData }));
+    setUser(prevUser => {
+      const newUser = { ...prevUser, ...updatedUserData };
+      
+      // If it's a demo user, update localStorage too
+      if (newUser.isDemo) {
+        localStorage.setItem('demoUser', JSON.stringify(newUser));
+      }
+      
+      return newUser;
+    });
   };
 
   const isAuthenticated = () => {
